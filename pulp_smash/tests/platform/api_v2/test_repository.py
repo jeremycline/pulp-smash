@@ -8,7 +8,9 @@ The assumptions explored in this module have the following dependencies::
         │   or other invalid attributes.
         ├── It is possible to read a repository.
         ├── It is possible to update a repository.
-        └── It is possible to delete a repository.
+        ├── It is possible to delete a repository.
+        └── It is possible to trigger a lazy download for a repository.
+
 
 .. _repository:
     https://pulp.readthedocs.org/en/latest/dev-guide/integration/rest-api/repo/index.html
@@ -212,3 +214,60 @@ class ReadUpdateDeleteSuccessTestCase(TestCase):
         cls.attrs_iter = cls.attrs_iter[:-1]  # pop last item
         for attrs in cls.attrs_iter:
             delete(cls.cfg, attrs['_href'])
+
+
+class DownloadRepoTestCase(TestCase):
+    """Establish that we can dispatch a task to download a repository.
+
+    This test assumes that the assertions in :class:`CreateSuccessTestCase` are
+    valid.
+
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """Create one repository to dispatch a download task for."""
+        cls.cfg = get_config()
+        cls.url = cls.cfg.base_url + REPOSITORY_PATH
+        cls.create_body = {'id': uuid4()}
+        cls.create_response = requests.post(
+            cls.url,
+            json=cls.create_body,
+            **cls.cfg.get_requests_kwargs()
+        )
+        cls.download_success_response = requests.post(
+            cls.url + cls.create_body['id'] + '/actions/download/',
+            json={},
+            **cls.cfg.get_requests_kwargs()
+        )
+        cls.download_failure_response = requests.post(
+            cls.url + uuid4() + '/actions/download/',
+            json={},
+            **cls.cfg.get_requests_kwargs()
+        )
+
+    def test_create_status_code(self):
+        """Assert that the create call has a 201 status code."""
+        self.assertEqual(self.create_response.status_code, 201)
+
+    def test_download_success_status_code(self):
+        """Assert that the download success call has a 202 status code."""
+        self.assertEqual(self.download_success_response.status_code, 202)
+
+    def test_download_failure_status_code(self):
+        """Assert that the download failure call has a 404 status code."""
+        self.assertEqual(self.download_failure_response.status_code, 404)
+
+    def test_download_success_attributes_spawned_tasks(self):
+        """Assert that `spawned_tasks` is present and a task was created."""
+        response = self.download_success_response.json()
+        self.assertIn('spawned_tasks', response)
+        self.assertEqual(len(response['spawned_tasks']), 1)
+
+    @classmethod
+    def tearDownClass(cls):
+        """Delete the created repositories."""
+        requests.delete(
+            cls.url + cls.create_body['id'] + '/',
+            **cls.cfg.get_requests_kwargs()
+        ).raise_for_status()
