@@ -271,3 +271,83 @@ class DownloadRepoTestCase(TestCase):
             cls.url + cls.create_body['id'] + '/',
             **cls.cfg.get_requests_kwargs()
         ).raise_for_status()
+
+
+class ReadDetailsTestCase(TestCase):
+    """Establish that we can read a repository and retrieve a detailed view.
+
+    This test assumes that the assertions in :class:`CreateSuccessTestCase` are
+    valid.
+
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """Create a repository to read details from."""
+        cls.cfg = get_config()
+        cls.attributes = create_repository(cls.cfg, {'id': uuid4()})
+
+        # Read with details, read with importer, and read with distributor.
+        cls.responses = {}
+        cls.responses['read_details'] = requests.get(
+            cls.cfg.base_url + cls.attributes['_href'] + '?details=true',
+            **cls.cfg.get_requests_kwargs()
+        )
+        cls.responses['read_importers'] = requests.get(
+            cls.cfg.base_url + cls.attributes['_href'] + '?importers=true',
+            **cls.cfg.get_requests_kwargs()
+        )
+        cls.responses['read_distributors'] = requests.get(
+            cls.cfg.base_url + cls.attributes['_href'] + '?distributors=true',
+            **cls.cfg.get_requests_kwargs()
+        )
+
+    def test_status_codes(self):
+        """Assert each response has a correct HTTP status code."""
+        for action, code in zip(self.responses.keys(), (200, 200, 200)):
+            with self.subTest((action, code)):
+                self.assertEqual(self.responses[action].status_code, code)
+
+    def test_read_details_attributes(self):
+        """
+        Assert the "read_details" response body contains the correct
+        attributes.
+        """
+        expected_details = (
+            'distributors',
+            'importers',
+            'total_repository_units',
+            'locally_stored_units'
+        )
+        for key in expected_details:
+            with self.subTest(key):
+                self.assertIn(key, self.responses['read_details'].json())
+
+    def test_read_details_total_repo_units(self):
+        """Assert that the repo has 0 total repo units."""
+        response_body = self.responses['read_details'].json()
+        self.assertEqual(0, response_body['total_repository_units'])
+
+    def test_read_details_locally_stored_units(self):
+        """Assert that the repo has 0 locally stored units."""
+        response_body = self.responses['read_details'].json()
+        self.assertEqual(0, response_body['locally_stored_units'])
+
+    def test_read_importers(self):
+        """Assert the "read_importers" response body contains the importer."""
+        self.assertIn('importers', self.responses['read_importers'].json())
+
+    def test_read_distributor(self):
+        """
+        Assert the "read_distributors" response body contains the
+        distributor.
+        """
+        self.assertIn(
+            'distributors',
+            self.responses['read_distributors'].json()
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        """Delete the created repositories."""
+        delete(cls.cfg, cls.attributes['_href'])
