@@ -341,6 +341,28 @@ class SyncInvalidFeedTestCase(_BaseTestCase):
         self.assertEqual(len(self.task_bodies), 1)
 
 
+class SyncOnDemandTestCase(SyncValidFeedTestCase):
+    """Assert that Yum supports on-demand syncing."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Create an RPM repository with a valid feed and sync it."""
+        super(SyncOnDemandTestCase, cls).setUpClass()
+        cls.post_sync_repo = handle_response(requests.get(
+                cls.cfg.base_url + cls.attrs_iter[0]['_href'] + '?details=true',
+                **cls.cfg.get_requests_kwargs()
+            )
+        )
+
+    def test_no_local_units(self):
+        """Assert no content units were downloaded."""
+        self.assertEqual(0, self.post_sync_repo['locally_stored_units'])
+
+    def test_repository_units(self):
+        """Assert there are some content units in the repository."""
+        self.assertGreater(0, self.post_sync_repo['total_repository_units'])
+
+
 class PublishTestCase(_BaseTestCase):
     """Upload an RPM to a repository, publish it and download the RPM."""
 
@@ -440,7 +462,6 @@ class PublishTestCase(_BaseTestCase):
             os.path.split(urlparse(_RPM_URL).path)[1],  # not [-1]?!
         ))
         response = requests.get(url, verify=cls.cfg.verify)
-        response.raise_for_status()
         cls.rpms.append(response.content)
 
         # Search for all units in each of the two repositories.
